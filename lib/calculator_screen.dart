@@ -1,6 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:math_expressions/math_expressions.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+
+import 'calculator_utils.dart';
 
 class CalculatorScreen extends StatefulWidget {
   const CalculatorScreen({super.key});
@@ -11,6 +15,7 @@ class CalculatorScreen extends StatefulWidget {
 
 class _CalculatorScreenState extends State<CalculatorScreen> {
   bool isDarkMode = false;
+  bool isDegreeMode = true;
   String expression = '';
   String result = '0';
   final List<Map<String, String>> history = [];
@@ -139,6 +144,24 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   void calculate() {
     try {
       final parser = GrammarParser();
+      parser.functions1
+        ..remove('sin')
+        ..remove('cos')
+        ..remove('tan');
+      double toRadians(double value) =>
+          isDegreeMode ? value * math.pi / 180 : value;
+      double cleanTrigResult(double value) => value.abs() < 1e-12 ? 0 : value;
+      parser.functionsC.addAll({
+        'sin': (arguments) =>
+            cleanTrigResult(math.sin(toRadians(arguments.single))),
+        'cos': (arguments) =>
+            cleanTrigResult(math.cos(toRadians(arguments.single))),
+        'tan': (arguments) {
+          final radians = toRadians(arguments.single);
+          if (math.cos(radians).abs() < 1e-12) return double.nan;
+          return cleanTrigResult(math.tan(radians));
+        },
+      });
 
       final parsedExpression = parser.parse(expression.replaceAll('×', '*'));
 
@@ -146,10 +169,21 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
       final answer = evaluator.evaluate(parsedExpression);
 
-      result = answer.toInt().toString();
+      result = formatCalculationResult(answer);
     } catch (e) {
       result = 'Error';
     }
+  }
+
+  void translateAnswer() {
+    if (expression.trim().isNotEmpty) {
+      setState(calculate);
+    }
+    if (result == 'Error') {
+      showConvertedNumberDialog('The current calculation has no valid answer.');
+      return;
+    }
+    showConvertedNumberDialog(numberToEnglish(result));
   }
 
   void showConvertedNumberDialog(String convertedText) {
@@ -171,12 +205,13 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          content: Text(
+          scrollable: true,
+          content: SelectableText(
             convertedText,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: isDarkMode ? Colors.white : Colors.black,
-              fontSize: 22,
+              fontSize: 20,
             ),
           ),
           actions: [
@@ -190,8 +225,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               ),
             ),
             TextButton(
-              onPressed: () async{
-                await speakAnswer();
+              onPressed: () async {
+                await speakText(convertedText);
               },
               child: Text(
                 'Speak',
@@ -207,8 +242,12 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   }
 
   Future<void> speakAnswer() async {
+    await speakText(result);
+  }
+
+  Future<void> speakText(String text) async {
     try {
-      if (result == 'Error' || result.isEmpty) {
+      if (text == 'Error' || text.isEmpty) {
         debugPrint('There is no valid answer to speak.');
         return;
       }
@@ -220,7 +259,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
       await flutterTts.stop();
 
-      final response = await flutterTts.speak(result);
+      final response = await flutterTts.speak(text);
 
       debugPrint('TTS response: $response');
     } catch (e) {
@@ -234,6 +273,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     super.dispose();
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: isDarkMode
@@ -247,8 +287,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           child: Column(
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  const SizedBox(width: 48),
                   ElevatedButton(
                     onPressed: () {},
                     style: ElevatedButton.styleFrom(
@@ -287,6 +328,14 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                       ],
                     ),
                   ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        isDegreeMode = !isDegreeMode;
+                      });
+                    },
+                    child: Text(isDegreeMode ? 'DEG' : 'RAD'),
+                  ),
                 ],
               ),
 
@@ -309,7 +358,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         iconSize: 28,
                         color: isDarkMode ? Colors.white : Colors.black,
                         onPressed: () {
-                          showConvertedNumberDialog('$result');
+                          translateAnswer();
                         },
                       ),
                       SizedBox(width: 25),
@@ -339,20 +388,17 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
+                      _buildDisplayText(
                         result,
-                        style: TextStyle(
-                          fontSize: 40,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode ? Colors.white : Colors.deepOrange,
-                        ),
+                        fontSize: 36,
+                        fontWeight: FontWeight.w800,
+                        color: isDarkMode ? Colors.white : Colors.deepOrange,
                       ),
-                      Text(
+                      _buildDisplayText(
                         expression.isEmpty ? '0' : expression,
-                        style: TextStyle(
-                          fontSize: 27,
-                          color: isDarkMode ? Colors.white70 : Colors.black54,
-                        ),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        color: isDarkMode ? Colors.white70 : Colors.black54,
                       ),
                     ],
                   ),
@@ -388,6 +434,39 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     );
   }
 
+  Widget _buildDisplayText(
+    String text, {
+    required double fontSize,
+    required Color color,
+    FontWeight? fontWeight,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          reverse: true,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                text,
+                maxLines: 1,
+                softWrap: false,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: fontWeight,
+                  color: color,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget buildButtonRow(List<String> buttons) {
     return Expanded(
       child: Row(
@@ -413,18 +492,25 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                     elevation: 2,
                     shadowColor: Colors.grey,
                     padding: EdgeInsets.zero,
+                    alignment: Alignment.center,
                   ),
 
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      button,
-                      style: const TextStyle(
-                        fontSize: 25,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  child: Center(
+                    child: button == '⌫'
+                        ? Icon(
+                            Icons.backspace_outlined,
+                            size: 25,
+                            color: getButtonColor(button),
+                          )
+                        : Text(
+                            button,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                     ),
-                  ),
                 ),
                 // child: ElevatedButton(
                 //   onPressed: () {
