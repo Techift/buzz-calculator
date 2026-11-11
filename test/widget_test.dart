@@ -1,30 +1,88 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:buzz_calculator/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  Future<void> tapButton(WidgetTester tester, String label) async {
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> enterExpression(WidgetTester tester, String expression) async {
+    for (final character in expression.split('')) {
+      await tapButton(tester, character);
+    }
+  }
+
+  testWidgets('evaluates trigonometry in degrees and radians', (tester) async {
     await tester.pumpWidget(const MyApp());
+    await tapButton(tester, 'sin');
+    await enterExpression(tester, '90)');
+    await tapButton(tester, '=');
+    expect(find.text('1'), findsNWidgets(2));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tapButton(tester, 'c');
+    await tapButton(tester, 'cos');
+    await enterExpression(tester, '60)');
+    await tapButton(tester, '=');
+    expect(find.text('0.5'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tapButton(tester, 'c');
+    await tapButton(tester, 'tan');
+    await enterExpression(tester, '45)');
+    await tapButton(tester, '=');
+    expect(find.text('1'), findsNWidgets(2));
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    await tapButton(tester, 'c');
+    await tapButton(tester, 'DEG');
+    await tapButton(tester, 'sin');
+    await enterExpression(tester, '1)');
+    await tapButton(tester, '=');
+    expect(find.text('0.841470984808'), findsOneWidget);
+
+    await tapButton(tester, 'c');
+    await tapButton(tester, 'cos');
+    await enterExpression(tester, '1)');
+    await tapButton(tester, '=');
+    expect(find.text('0.540302305868'), findsOneWidget);
+
+    await tapButton(tester, 'c');
+    await tapButton(tester, 'tan');
+    await enterExpression(tester, '1)');
+    await tapButton(tester, '=');
+    expect(find.text('1.55740772465'), findsOneWidget);
+
+    await tapButton(tester, 'c');
+    await tapButton(tester, 'RAD');
+    await tapButton(tester, 'tan');
+    await enterExpression(tester, '90)');
+    await tapButton(tester, '=');
+    expect(find.text('Error'), findsOneWidget);
+  });
+
+  testWidgets('translates the calculated answer into words', (tester) async {
+    await tester.pumpWidget(const MyApp());
+    await enterExpression(tester, '12+13');
+    await tapButton(tester, '=');
+    await tester.tap(find.byIcon(Icons.translate));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Twenty-five'), findsOneWidget);
+  });
+
+  testWidgets('keeps long expressions horizontally scrollable', (tester) async {
+    await tester.pumpWidget(const MyApp());
+    await enterExpression(tester, '12345678901234567890123');
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SingleChildScrollView &&
+            widget.scrollDirection == Axis.horizontal,
+      ),
+      findsNWidgets(2),
+    );
+    expect(tester.takeException(), isNull);
   });
 }
